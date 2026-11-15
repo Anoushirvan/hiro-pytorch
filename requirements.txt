@@ -1,0 +1,8 @@
+torch>=2.0
+numpy
+matplotlib
+gymnasium[mujoco]>=1.0
+mujoco>=3.0
+pyyaml
+imageio
+pytest
