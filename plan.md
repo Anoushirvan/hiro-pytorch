@@ -75,7 +75,7 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - [x] Step 1 — DDPG → TD3 (flags for each TD3 fix), verified on Pendulum-v1
 - [x] Step 2 — goal-conditioned low level (h, r, Eq. 2–4)
 - [x] Step 3 — PointMaze + HIRO without correction
-- [ ] Step 4 — off-policy correction (Eq. 5)
+- [x] Step 4 — off-policy correction (Eq. 5)
 - [ ] Step 5 — Ant + Ant Maze port
 - [ ] Step 6 — experiments (Maze: HIRO / no-corr / flat TD3; Push; Fall)
 - [ ] Step 7 — plots, goal-trajectory visualisations, GIFs
@@ -105,3 +105,9 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   Failures = deceptive local optimum: high level proposes subgoals through the wall (results/step3_goals_nocorr.png).
   Takeaway: on a directly-controllable point the hierarchy gives no clear win (paper's gains come from Ant
   locomotion + navigation). HIRO's success curve oscillates → motivation for the correction (Step 4).
+- 2026-11-17: Step 4 done. `HIRO.candidate_goals / correction_scores / off_policy_correction` (Eq. 5), 4 new tests
+  (20 total). PointMaze 200k steps × 5 seeds, success at (0,8) averaged over last 4 evals:
+  HIRO 0.91 (5/5 seeds solve) | HIRO-no-correction 0.29 (2/5) | flat TD3 0.20 (1/5).
+  Relabel fraction stays 50–70% all run (stored actions include exploration noise, so the original goal is rarely
+  the exact argmax) — note for report. Correction costs ~40% wall-clock (115 vs 195 sps with 9 parallel runs).
+  Plots: results/step4_pointmaze_success.png, results/step4_goals_corr.png.

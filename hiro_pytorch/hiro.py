@@ -49,7 +49,7 @@ class HIRO:
         self.low_buf = ReplayBuffer(state_dim + goal_dim, act_dim, device=device)
         self.high_buf = HighReplayBuffer(obs_dim, goal_dim, state_dim, act_dim, cfg.c, device=device)
         self.low_noise_std = cfg.low_noise * (self.act_high - self.act_low) / 2
-        self.n_relabel_changed = 0      # Step 4 diagnostics
+        self.relabel_stats = {}         # Step 4 diagnostics (last high-level batch)
 
     # ------------------------------------------------------------------ acting
     def state(self, obs):
@@ -90,8 +90,54 @@ class HIRO:
             batch["act"] = self.off_policy_correction(batch)
         return self.high.update(batch)
 
+    # ------------------------------------------------------------------ off-policy correction (Sec. 3.3)
+    def candidate_goals(self, batch) -> torch.Tensor:
+        """K candidate re-labelled goals, shape (K, B, goal_dim). Index 0 = original g_t, 1 = s_{t+c} - s_t,
+        2.. = Gaussian samples around s_{t+c} - s_t with std = candidate_std * goal half-range
+        (official `agent.py: InverseDynamics.sample`, sc=0.5). All clipped to the goal space."""
+        gi = torch.as_tensor(self.goal_idx, device=self.device)
+        s = batch["states"]                                              # (B, c+1, sd)
+        orig = batch["act"]                                              # (B, gd)
+        delta = s[:, -1, gi] - s[:, 0, gi]                               # s_{t+c} - s_t
+        lo = torch.as_tensor(self.goal_low, device=self.device)
+        hi = torch.as_tensor(self.goal_high, device=self.device)
+        std = self.cfg.candidate_std * (hi - lo) / 2
+        n_rand = self.cfg.n_candidates - 2
+        rand = delta.unsqueeze(0) + std * torch.randn(n_rand, *delta.shape, device=self.device)
+        cands = torch.cat([orig.unsqueeze(0), delta.unsqueeze(0), rand], dim=0)
+        return torch.max(torch.min(cands, hi), lo)
+
+    @torch.no_grad()
+    def correction_scores(self, states, actions, cands) -> torch.Tensor:
+        """log-probability (up to constants) of the stored low-level actions under the CURRENT low policy,
+        for each candidate goal. Eq. 5 with a Gaussian behaviour policy a ~ N(mu_lo, sigma^2):
+
+            log mu_lo(a_{t:t+c-1} | s_{t:t+c-1}, g~_{t:t+c-1})  ∝  -1/2 Σ_i || a_i - mu_lo(s_i, g~_i) ||^2
+
+        where the candidate's goal sequence follows h:  g~_i = s_t + g~ - s_{t+i}  (absolute target fixed).
+        Errors are divided by the action half-range like the official `agent.py: log_probs`.
+        states (B, c+1, sd), actions (B, c, ad), cands (K, B, gd)  ->  scores (K, B)."""
+        gi = torch.as_tensor(self.goal_idx, device=self.device)
+        K, c = cands.shape[0], actions.shape[1]
+        s = states[:, :c]                                                # s_t .. s_{t+c-1}   (B, c, sd)
+        target_abs = states[:, 0, gi].unsqueeze(0) + cands               # s_t + g~           (K, B, gd)
+        goal_seq = target_abs.unsqueeze(2) - s[..., gi].unsqueeze(0)     # g~_i               (K, B, c, gd)
+        s_rep = s.unsqueeze(0).expand(K, *s.shape)                       # (K, B, c, sd)
+        pred = self.low.actor(low_level_input(s_rep, goal_seq, self.cfg.zero_idx))   # (K, B, c, ad)
+        half = self.low.actor.act_scale
+        err = ((actions.unsqueeze(0) - pred) / half) ** 2
+        return -0.5 * err.sum(dim=(-1, -2))
+
+    @torch.no_grad()
     def off_policy_correction(self, batch) -> torch.Tensor:
-        raise NotImplementedError("Step 4")
+        """Re-label each sampled high-level action with the candidate that best explains the stored low-level
+        actions under the current low policy (argmax of Eq. 5). Returns the new goals (B, gd)."""
+        cands = self.candidate_goals(batch)
+        scores = self.correction_scores(batch["states"], batch["actions"], cands)
+        best = scores.argmax(dim=0)                                      # (B,)  ties -> original (index 0)
+        self.relabel_stats = dict(relabel_frac_changed=(best != 0).float().mean().item(),
+                                  relabel_frac_delta=(best == 1).float().mean().item())
+        return cands[best, torch.arange(cands.shape[1], device=self.device)]
 
     # ------------------------------------------------------------------ io
     def save(self, path: str) -> None:

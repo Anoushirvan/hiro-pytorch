@@ -99,11 +99,12 @@ def main():
             row = dict(step=step, train_return=float(np.mean(recent_returns)) if recent_returns else np.nan,
                        **evaluate(eval_env, agent, spec["eval_targets"], args.eval_episodes),
                        low_q=lo_info.get("q_mean", np.nan), high_q=hi_info.get("q_mean", np.nan),
-                       relabel_changed=agent.n_relabel_changed, sps=step / (time.time() - t0))
+                       relabel_frac_changed=agent.relabel_stats.get("relabel_frac_changed", np.nan),
+                       relabel_frac_delta=agent.relabel_stats.get("relabel_frac_delta", np.nan), sps=step / (time.time() - t0))
             logger.log(row)
             succ = " ".join(f"{k[8:]}={v:.0%}" for k, v in row.items() if k.startswith("success_"))
             print(f"step {step:7d} | train ret {row['train_return']:8.1f} | success {succ} | "
-                  f"dist {row[f'dist_{spec['main_target']}']:.2f} | {row['sps']:.0f} sps", flush=True)
+                  f"dist {row[f'dist_{spec['main_target']}']:.2f} | relabeled {row['relabel_frac_changed']:.0%} | {row['sps']:.0f} sps", flush=True)
             agent.save(os.path.join(ckpt_dir, f"seed{args.seed}.pt"))
 
 
