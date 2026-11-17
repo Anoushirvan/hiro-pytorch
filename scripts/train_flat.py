@@ -22,6 +22,7 @@ import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from hiro_pytorch.buffers import ReplayBuffer  # noqa: E402
+from hiro_pytorch.envs import ENV_SPECS, make_env  # noqa: E402
 from hiro_pytorch.td3 import TD3, TD3Config  # noqa: E402
 from hiro_pytorch.utils import CSVLogger, set_seed  # noqa: E402
 
@@ -40,20 +41,21 @@ def make_config(args) -> TD3Config:
     return cfg
 
 
-def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: int):
-    returns, q_est, q_true = [], [], []
+def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: int, reset_options=None):
+    returns, q_est, q_true, success = [], [], [], []
     for ep in range(episodes):
-        obs, _ = env.reset(seed=seed + ep)
+        obs, _ = env.reset(seed=seed + ep, options=reset_options)
         obs_list, act_list, rews = [], [], []
         done = False
         while not done:
             a = agent.act(obs)
             obs_list.append(obs)
             act_list.append(a)
-            obs, r, term, trunc, _ = env.step(a)
+            obs, r, term, trunc, info = env.step(a)
             rews.append(r)
             done = term or trunc
         returns.append(sum(rews))
+        success.append(float(info.get("success", np.nan)))
         # discounted return-to-go G_t = r_t + gamma * G_{t+1}
         g, gs = 0.0, np.zeros(len(rews))
         for t in reversed(range(len(rews))):
@@ -64,7 +66,7 @@ def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: i
         a = torch.as_tensor(np.array(act_list[:n]), dtype=torch.float32, device=agent.device)
         q_est.append(agent.q_value(o, a).mean().item())
         q_true.append(gs[:n].mean())
-    return float(np.mean(returns)), float(np.mean(q_est)), float(np.mean(q_true))
+    return float(np.mean(returns)), float(np.mean(q_est)), float(np.mean(q_true)), float(np.mean(success))
 
 
 def main():
@@ -88,7 +90,12 @@ def main():
     args = p.parse_args()
 
     set_seed(args.seed)
-    env, eval_env = gym.make(args.env), gym.make(args.env)
+    if args.env in ENV_SPECS:   # our maze envs; evaluate on the main ("end of maze") target
+        env, eval_env = make_env(args.env), make_env(args.env)
+        spec = ENV_SPECS[args.env]
+        eval_opts = {"target": spec["eval_targets"][spec["main_target"]]}
+    else:
+        env, eval_env, eval_opts = gym.make(args.env), gym.make(args.env), None
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.shape[0]
     low, high = env.action_space.low, env.action_space.high
@@ -120,11 +127,11 @@ def main():
             info = agent.update(buf.sample(args.batch))
 
         if step % args.eval_every == 0:
-            ret, q_est, q_true = evaluate(eval_env, agent, args.eval_episodes, cfg.gamma,
-                                          args.probe_t, seed=10_000)
-            logger.log(dict(step=step, eval_return=ret, q_est=q_est, q_true=q_true,
+            ret, q_est, q_true, succ = evaluate(eval_env, agent, args.eval_episodes, cfg.gamma,
+                                                args.probe_t, seed=10_000, reset_options=eval_opts)
+            logger.log(dict(step=step, eval_return=ret, q_est=q_est, q_true=q_true, success=succ,
                             critic_loss=info["critic_loss"], sps=step / (time.time() - t0)))
-            print(f"step {step:7d} | return {ret:9.2f} | Q est {q_est:8.2f} vs true {q_true:8.2f}"
+            print(f"step {step:7d} | return {ret:9.2f} | success {succ:.0%} | Q est {q_est:8.2f} vs true {q_true:8.2f}"
                   f" | {step / (time.time() - t0):.0f} sps")
 
 

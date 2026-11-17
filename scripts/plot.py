@@ -24,7 +24,9 @@ def load(variant_dir: str, metric: str):
     for f in sorted(glob.glob(os.path.join(variant_dir, "seed*.csv"))):
         with open(f) as fh:
             rows = list(csv.DictReader(fh))
-        runs.append((np.array([float(r["step"]) for r in rows]), np.array([float(r[metric]) for r in rows])))
+        # `metric` may be "a,b": use the first column that exists (HIRO logs success_0_8, flat TD3 logs success)
+        col = next(m for m in metric.split(",") if m in rows[0])
+        runs.append((np.array([float(r["step"]) for r in rows]), np.array([float(r[col]) for r in rows])))
     if not runs:
         return None
     n = min(len(r[0]) for r in runs)                      # align to the shortest run
@@ -41,7 +43,8 @@ def band(ax, steps, mean, se, label, color, ls="-"):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--root", required=True)
-    p.add_argument("--metric", default="eval_return")
+    p.add_argument("--metric", default="eval_return", help="column, or comma-separated fallbacks")
+    p.add_argument("--ylabel", default=None)
     p.add_argument("--overestimation", action="store_true", help="plot q_est (solid) vs q_true (dashed)")
     p.add_argument("--variants", nargs="*", default=None)
     p.add_argument("--title", default=None)
@@ -60,7 +63,7 @@ def main():
             d = load(os.path.join(args.root, v), args.metric)
             band(ax, d[0], d[1], d[2], f"{v} (n={d[3]})", c)
     ax.set_xlabel("environment steps")
-    ax.set_ylabel("value" if args.overestimation else args.metric)
+    ax.set_ylabel(args.ylabel or ("value" if args.overestimation else args.metric))
     ax.set_title(args.title or os.path.basename(args.root.rstrip("/")))
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)

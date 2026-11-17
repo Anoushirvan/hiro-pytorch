@@ -1,0 +1,111 @@
+"""Train HIRO (paper Fig. 2 loop).
+
+  python scripts/train_hiro.py --env PointMaze --steps 200000                  # Step 3 (no correction)
+  python scripts/train_hiro.py --env PointMaze --steps 200000 --correction    # Step 4
+
+Loop per environment step t:
+  if t % c == 0:   g_t ~ mu_hi(obs_t) + noise            (new high-level decision)
+  a_t ~ mu_lo(s_t, g_t) + noise ;  step env -> R_t, s_{t+1}
+  low transition  (s_t, g_t, a_t, r_t = -||s_t+g_t-s_{t+1}||, s_{t+1}, g_{t+1} = h(...))  -> low buffer
+  after c steps:  high transition (obs_t, g_t, 0.1*sum R, obs_{t+c}, s_{t:t+c}, a_{t:t+c-1}) -> high buffer
+  update low every step, high every c steps.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import time
+
+import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from hiro_pytorch.envs import ENV_SPECS, make_env  # noqa: E402
+from hiro_pytorch.hiro import HIRO, HIROConfig, rollout  # noqa: E402
+from hiro_pytorch.utils import CSVLogger, set_seed  # noqa: E402
+
+
+def evaluate(env, agent, targets, episodes):
+    out = {}
+    for name, tgt in targets.items():
+        trajs = [rollout(env, agent, explore=False, reset_options={"target": tgt}, seed=1000 + k)
+                 for k in range(episodes)]
+        out[f"success_{name}"] = float(np.mean([tr["info"]["success"] for tr in trajs]))
+        out[f"dist_{name}"] = float(np.mean([tr["info"]["dist"] for tr in trajs]))
+    return out
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--env", default="PointMaze", choices=list(ENV_SPECS))
+    p.add_argument("--steps", type=int, default=200_000)
+    p.add_argument("--correction", action="store_true")
+    p.add_argument("--start-steps", type=int, default=None, help="random warm-up (default: 5 episodes)")
+    p.add_argument("--eval-every", type=int, default=5_000)
+    p.add_argument("--eval-episodes", type=int, default=5)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--out", default="results/runs")
+    p.add_argument("--tag", default=None)
+    args = p.parse_args()
+
+    set_seed(args.seed)
+    spec = ENV_SPECS[args.env]
+    env, eval_env = make_env(args.env), make_env(args.env)
+    cfg = HIROConfig(correction=args.correction, **spec.get("hiro_kwargs", {}))
+    agent = HIRO(obs_dim=env.observation_space.shape[0], state_dim=env.state_dim,
+                 act_low=env.action_space.low, act_high=env.action_space.high, goal_idx=env.goal_idx,
+                 goal_low=-np.asarray(spec["goal_range"]), goal_high=np.asarray(spec["goal_range"]), cfg=cfg)
+    c = cfg.c
+    start_steps = args.start_steps if args.start_steps is not None else 5 * env.max_steps
+    assert env.max_steps % c == 0, "episode length must be a multiple of c"
+
+    tag = args.tag or ("hiro" if args.correction else "hiro_no_correction")
+    run_dir = os.path.join(args.out, args.env, tag)
+    logger = CSVLogger(os.path.join(run_dir, f"seed{args.seed}.csv"))
+    ckpt_dir = os.path.join("results", "checkpoints", args.env, tag)
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    obs, _ = env.reset(seed=args.seed)
+    t_ep, ep_return, recent_returns, t0 = 0, 0.0, [], time.time()
+    lo_info, hi_info = {}, {}
+    for step in range(1, args.steps + 1):
+        warmup = step <= start_steps
+        if t_ep % c == 0:                                         # ---- high-level decision
+            g = agent.random_goal() if warmup else agent.select_goal(obs, explore=True)
+            seg_obs, seg_goal, seg_R = obs, g, 0.0
+            seg_states, seg_actions = [agent.state(obs)], []
+        a = env.action_space.sample() if warmup else agent.select_action(obs, g, explore=True)
+        obs2, R, term, trunc, info = env.step(a)
+        g2 = agent.next_goal(obs, g, obs2)                        # Eq. 2
+        agent.store_low(obs, g, a, obs2, g2, term)                # Eq. 3/4
+        seg_R += R
+        seg_states.append(agent.state(obs2))
+        seg_actions.append(a)
+        ep_return += R
+        obs, g, t_ep = obs2, g2, t_ep + 1
+        if t_ep % c == 0 or term:                                 # ---- close high-level segment
+            agent.store_high(seg_obs, seg_goal, seg_R, obs, term, seg_states, seg_actions)
+        if term or trunc:
+            recent_returns = (recent_returns + [ep_return])[-10:]
+            obs, _ = env.reset()
+            t_ep, ep_return = 0, 0.0
+
+        if step > start_steps:                                    # ---- learning
+            lo_info = agent.update_low()
+            if step % c == 0:
+                hi_info = agent.update_high()
+
+        if step % args.eval_every == 0:
+            row = dict(step=step, train_return=float(np.mean(recent_returns)) if recent_returns else np.nan,
+                       **evaluate(eval_env, agent, spec["eval_targets"], args.eval_episodes),
+                       low_q=lo_info.get("q_mean", np.nan), high_q=hi_info.get("q_mean", np.nan),
+                       relabel_changed=agent.n_relabel_changed, sps=step / (time.time() - t0))
+            logger.log(row)
+            succ = " ".join(f"{k[8:]}={v:.0%}" for k, v in row.items() if k.startswith("success_"))
+            print(f"step {step:7d} | train ret {row['train_return']:8.1f} | success {succ} | "
+                  f"dist {row[f'dist_{spec['main_target']}']:.2f} | {row['sps']:.0f} sps", flush=True)
+            agent.save(os.path.join(ckpt_dir, f"seed{args.seed}.pt"))
+
+
+if __name__ == "__main__":
+    main()

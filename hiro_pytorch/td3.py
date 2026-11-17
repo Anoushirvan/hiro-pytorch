@@ -109,11 +109,11 @@ class TD3:
 
     # ---------------------------------------------------------------- acting
     @torch.no_grad()
-    def act(self, obs: np.ndarray, noise_std: float = 0.0) -> np.ndarray:
-        """Deterministic mu(s), plus optional Gaussian exploration noise (absolute std), clipped."""
+    def act(self, obs: np.ndarray, noise_std=0.0) -> np.ndarray:
+        """Deterministic mu(s), plus optional Gaussian exploration noise (absolute std, scalar or per-dim), clipped."""
         o = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         a = self.actor(o)[0].cpu().numpy()
-        if noise_std > 0:
+        if np.any(np.asarray(noise_std) > 0):
             a = a + np.random.normal(0.0, noise_std, size=a.shape)
         return np.clip(a, self.act_low, self.act_high).astype(np.float32)
 

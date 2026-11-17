@@ -74,7 +74,7 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - [x] Step 0 — setup, official code cloned to `../reference_official/`, cheat-sheet `docs/notes.md`
 - [x] Step 1 — DDPG → TD3 (flags for each TD3 fix), verified on Pendulum-v1
 - [x] Step 2 — goal-conditioned low level (h, r, Eq. 2–4)
-- [ ] Step 3 — PointMaze + HIRO without correction
+- [x] Step 3 — PointMaze + HIRO without correction
 - [ ] Step 4 — off-policy correction (Eq. 5)
 - [ ] Step 5 — Ant + Ant Maze port
 - [ ] Step 6 — experiments (Maze: HIRO / no-corr / flat TD3; Push; Fall)
@@ -97,3 +97,11 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   ZERO_OBS helps a bit on the open plane; expected to matter more when positions span a whole maze.
   Plot: results/step2_low_final_dist.png. Note: official low-level noise σ=1 on ±30 actions (≈3% of range);
   we use 10% on the point.
+- 2026-11-17: Step 3 done. `envs/maze.py` (official ⊃ layout, numpy PointMaze, block 4, 200-step episodes,
+  success radius 1.5), `hiro.py` (HIRO agent + rollout), `HighReplayBuffer`, `scripts/{train_hiro,viz_goals}.py`,
+  train_flat now supports PointMaze. 16 tests pass. ~200 sps per run with 6 parallel.
+  200k steps × 3 seeds, success at hard target (0,8): HIRO-no-correction 1/3 seeds (60–80%, unstable),
+  flat TD3 1/3 seeds (100%, stable). Easy targets (8,0) solved by all HIRO seeds.
+  Failures = deceptive local optimum: high level proposes subgoals through the wall (results/step3_goals_nocorr.png).
+  Takeaway: on a directly-controllable point the hierarchy gives no clear win (paper's gains come from Ant
+  locomotion + navigation). HIRO's success curve oscillates → motivation for the correction (Step 4).
