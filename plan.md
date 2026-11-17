@@ -73,7 +73,7 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 ## Progress
 - [x] Step 0 — setup, official code cloned to `../reference_official/`, cheat-sheet `docs/notes.md`
 - [x] Step 1 — DDPG → TD3 (flags for each TD3 fix), verified on Pendulum-v1
-- [ ] Step 2 — goal-conditioned low level (h, r, Eq. 2–4)
+- [x] Step 2 — goal-conditioned low level (h, r, Eq. 2–4)
 - [ ] Step 3 — PointMaze + HIRO without correction
 - [ ] Step 4 — off-policy correction (Eq. 5)
 - [ ] Step 5 — Ant + Ant Maze port
@@ -91,3 +91,9 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   Overestimation probe at 30k: DDPG Q −29 vs true −32 (over by ≈3); TD3 Q −35 vs true −33 (slightly under) —
   matches TD3 paper's claim qualitatively; effect small on Pendulum. ~500 sps single run, ~200 sps with 6 in parallel.
   Plots: results/step1_pendulum_{return,q}.png.
+- 2026-11-17: Step 2 done. `hiro_pytorch/goals.py` (h, r, low_level_input/ZERO_OBS), `envs/point.py` (numpy point
+  mass, s=(x,y,vx,vy), top speed 1/step), `scripts/train_low.py` (low level on random goals U(-5,5)^2, c=10).
+  30k steps × 3 seeds: final distance 3.8 (do-nothing) → 0.02 with ZERO_OBS, 0.08 without (both ~100% within 0.5).
+  ZERO_OBS helps a bit on the open plane; expected to matter more when positions span a whole maze.
+  Plot: results/step2_low_final_dist.png. Note: official low-level noise σ=1 on ±30 actions (≈3% of range);
+  we use 10% on the point.
