@@ -4,3 +4,5 @@ __pycache__/
 results/runs/
 *.pt
 .ipynb_checkpoints/
+~$*
+*.pdf
