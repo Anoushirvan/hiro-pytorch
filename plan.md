@@ -76,7 +76,7 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - [x] Step 2 — goal-conditioned low level (h, r, Eq. 2–4)
 - [x] Step 3 — PointMaze + HIRO without correction
 - [x] Step 4 — off-policy correction (Eq. 5)
-- [ ] Step 5 — Ant + Ant Maze port
+- [x] Step 5 — Ant + Ant Maze port
 - [ ] Step 6 — experiments (Maze: HIRO / no-corr / flat TD3; Push; Fall)
 - [ ] Step 7 — plots, goal-trajectory visualisations, GIFs
 - [ ] Step 8 — README, Word report, PowerPoint, private GitHub repo
@@ -117,3 +117,10 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   relabelled (mean shift 4.45) → newest 17% (0.22), monotonic. ⇒ correction is doing what the paper intends
   (compensating low-level non-stationarity); buffer (200k) never evicts in our runs, so old data dominates.
   Figures: results/step4_relabel_vs_age.png, results/step4_relabel_analysis_seed{0,2}.png.
+- 2026-11-19: Step 5 done. `envs/ant_maze.py` (Maze/Push/Fall on official mujoco bindings, MJCF built like
+  official maze_env.py), `envs/assets/ant.xml` (official, Apache-2.0), AntMaze/AntPush/AntFall in ENV_SPECS with
+  hiro_orig.gin goal ranges, low noise 1/30, high noise 1. 25 tests pass (5 new physics tests: walls, push block,
+  chasm, obs layout, 500-step episodes). Finding: official start pose = model qpos0 (z=0.75, joints 0) — the
+  <custom> init_qpos in ant.xml is unused by gym. Throughput (AntMaze): raw physics ~4k sps; HIRO+corr ~310 sps
+  single; 6 parallel runs: 218 sps each with 1 torch thread vs 142 with default 8 → `--threads 1` default.
+  Render works (results/step5_envs.png; lighting to polish in Step 7).

@@ -45,11 +45,14 @@ def main():
     p.add_argument("--eval-every", type=int, default=5_000)
     p.add_argument("--eval-episodes", type=int, default=5)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--threads", type=int, default=1,
+                   help="torch threads per run; 1 is ~1.5x faster in total when running several seeds in parallel")
     p.add_argument("--out", default="results/runs")
     p.add_argument("--tag", default=None)
     p.add_argument("--age-analysis", action="store_true",
                    help="at the end, measure the correction's relabel rate vs. age of the buffer data")
     args = p.parse_args()
+    torch.set_num_threads(args.threads)
 
     set_seed(args.seed)
     spec = ENV_SPECS[args.env]

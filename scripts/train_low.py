@@ -59,9 +59,12 @@ def main():
     p.add_argument("--start-steps", type=int, default=1_000)
     p.add_argument("--eval-every", type=int, default=2_500)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--threads", type=int, default=1,
+                   help="torch threads per run; 1 is ~1.5x faster in total when running several seeds in parallel")
     p.add_argument("--out", default="results/runs/PointGoalReach")
     p.add_argument("--tag", default=None)
     args = p.parse_args()
+    torch.set_num_threads(args.threads)
 
     set_seed(args.seed)
     rng, eval_rng = np.random.default_rng(args.seed), np.random.default_rng(12345)
