@@ -158,3 +158,6 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - 2026-11-20: Word report written: `docs/report.docx` (13 pages A4, 9 figures, 4 tables, TOC; built by
   `docs/build_report.js`, diagrams by `scripts/make_diagrams.py`). Title page has placeholders [Name] etc.
   Ant section = paper's Table 1 + honest "Our Ant runs" paragraph (user's choice). Rendered via Word → PDF and checked.
+- 2026-11-20: Slides written: `docs/slides.pptx` (14 slides incl. 1 backup, 16:9, speaker notes on every slide,
+  native chart of the paper's Table 1, animated PointMaze GIF on slide 10; built by `docs/build_slides.js`,
+  GIF by `scripts/make_point_gif.py`). Rendered via PowerPoint → PDF and checked. Placeholders [Name]/[Course]/[Date].
