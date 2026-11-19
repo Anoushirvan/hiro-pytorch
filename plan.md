@@ -140,3 +140,13 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - 2026-11-19: Step 8 started — `docs/report_outline.md` (sections 1–5.4 drafted, Ant results as [TODO-ANT],
   paper Table 1 numbers: Maze 0.99±0.01, Push 0.92±0.04, Fall 0.66±0.07 at 10M) and `docs/slides_outline.md`
   (14 slides, ~15 min, figure per slide). To be turned into .docx / .pptx after Step 6–7 results.
+- 2026-11-20: **Step 6 batch 1 FAILED** (PC, 2M steps, 13 runs): 0% success on every task/variant; evaluated ant
+  never leaves the start. Diagnosis (`scripts/diagnose_ant.py`): low level cannot walk (torques saturated at ±30,
+  <0.3 units in 200 steps); high-level goals saturated at the corners of the ±10 range (unreachable in 1 s);
+  low critic flat at ≈ −13.5/(1−γ) → no learning signal → vicious circle.
+  Root causes = our deviations from the official code: (1) final-layer init PyTorch default instead of U(±3e-3)
+  (DDPG paper) → initial goals/torques not ≈ 0; (2) warm-up with uniform random goals over full range + random
+  torques instead of the noisy policies; (3) critic: action only in layer 2 (official: layers 1 and 2).
+  Fix: TD3Config.final_init=3e-3, action_in_first=True (defaults), policy warm-up; `--legacy` reproduces the old
+  setup. 27 tests pass. Validation on the Mac running (AntMaze fixed ×2 + legacy ×1 at 300k, PointMaze ×2, Pendulum).
+  Batch-1 results kept in results/runs/Ant* for the report ("what went wrong").

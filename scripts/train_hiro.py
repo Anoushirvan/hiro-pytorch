@@ -41,7 +41,10 @@ def main():
     p.add_argument("--env", default="PointMaze", choices=list(ENV_SPECS))
     p.add_argument("--steps", type=int, default=200_000)
     p.add_argument("--correction", action="store_true")
-    p.add_argument("--start-steps", type=int, default=None, help="random warm-up (default: 5 episodes)")
+    p.add_argument("--start-steps", type=int, default=None, help="warm-up steps without updates (default: 5 episodes)")
+    p.add_argument("--legacy", action="store_true",
+                   help="reproduce our pre-fix setup: PyTorch default init, action only in critic layer 2, "
+                        "uniform-random warm-up (goals over the full range, random torques)")
     p.add_argument("--eval-every", type=int, default=5_000)
     p.add_argument("--eval-episodes", type=int, default=5)
     p.add_argument("--seed", type=int, default=0)
@@ -59,6 +62,9 @@ def main():
     spec = ENV_SPECS[args.env]
     env, eval_env = make_env(args.env), make_env(args.env)
     cfg = HIROConfig(correction=args.correction, **spec.get("hiro_kwargs", {}))
+    if args.legacy:
+        for c_ in (cfg.low, cfg.high):
+            c_.final_init, c_.action_in_first = 0.0, False
     agent = HIRO(obs_dim=env.observation_space.shape[0], state_dim=env.state_dim,
                  act_low=env.action_space.low, act_high=env.action_space.high, goal_idx=env.goal_idx,
                  goal_low=-np.asarray(spec["goal_range"]), goal_high=np.asarray(spec["goal_range"]), cfg=cfg, device=args.device)
@@ -66,7 +72,7 @@ def main():
     start_steps = args.start_steps if args.start_steps is not None else 5 * env.max_steps
     assert env.max_steps % c == 0, "episode length must be a multiple of c"
 
-    tag = args.tag or ("hiro" if args.correction else "hiro_no_correction")
+    tag = args.tag or (("hiro" if args.correction else "hiro_no_correction") + ("_legacy" if args.legacy else ""))
     run_dir = os.path.join(args.out, args.env, tag)
     logger = CSVLogger(os.path.join(run_dir, f"seed{args.seed}.csv"))
     ckpt_dir = os.path.join("results", "checkpoints", args.env, tag)
@@ -78,10 +84,12 @@ def main():
     for step in range(1, args.steps + 1):
         warmup = step <= start_steps
         if t_ep % c == 0:                                         # ---- high-level decision
-            g = agent.random_goal() if warmup else agent.select_goal(obs, explore=True)
+            # warm-up: the official code collects its first episodes with the noisy *policies* (whose freshly
+            # initialised actors output ~0, i.e. small, reachable goals); legacy = uniform over the goal range
+            g = agent.random_goal() if (warmup and args.legacy) else agent.select_goal(obs, explore=True)
             seg_obs, seg_goal, seg_R = obs, g, 0.0
             seg_states, seg_actions = [agent.state(obs)], []
-        a = env.action_space.sample() if warmup else agent.select_action(obs, g, explore=True)
+        a = env.action_space.sample() if (warmup and args.legacy) else agent.select_action(obs, g, explore=True)
         obs2, R, term, trunc, info = env.step(a)
         g2 = agent.next_goal(obs, g, obs2)                        # Eq. 2
         agent.store_low(obs, g, a, obs2, g2, term)                # Eq. 3/4

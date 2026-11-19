@@ -38,6 +38,8 @@ def make_config(args) -> TD3Config:
         cfg.policy_delay = args.delay
     if args.mse:
         cfg.huber = False
+    if args.legacy:             # pre-fix architecture: PyTorch default init, action only in critic layer 2
+        cfg.final_init, cfg.action_in_first = 0.0, False
     return cfg
 
 
@@ -78,6 +80,7 @@ def main():
     p.add_argument("--no-smooth", action="store_true")
     p.add_argument("--delay", type=int, default=None)
     p.add_argument("--mse", action="store_true", help="use MSE instead of Huber critic loss")
+    p.add_argument("--legacy", action="store_true", help="pre-fix network init/architecture (see td3.py)")
     p.add_argument("--steps", type=int, default=30_000)
     p.add_argument("--start-steps", type=int, default=1_000, help="uniform-random warm-up steps")
     p.add_argument("--expl-noise", type=float, default=0.1, help="exploration std, fraction of half-range")

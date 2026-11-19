@@ -62,3 +62,18 @@ def test_policy_delay_and_soft_update():
 def test_ddpg_config_has_single_critic():
     agent = TD3(3, 1, [-1], [1], TD3Config.ddpg())
     assert not hasattr(agent, "critic2") and agent.cfg.policy_delay == 1
+
+
+def test_official_init_starts_at_action_centre_and_q_near_zero():
+    agent = TD3(10, 3, act_low=[-30, -30, -30], act_high=[30, 30, 30])
+    o = torch.randn(64, 10) * 5
+    a = agent.actor(o)
+    assert a.abs().max() < 3.0                               # tanh(small) * 30 -> close to 0, not saturated
+    assert agent.critic1(o, a).abs().max() < 1.0
+
+
+def test_legacy_architecture_flag():
+    cfg = TD3Config(final_init=0.0, action_in_first=False)
+    agent = TD3(10, 3, [-1] * 3, [1] * 3, cfg)
+    assert agent.critic1.l1.in_features == 10                # action only enters at layer 2
+    assert TD3(10, 3, [-1] * 3, [1] * 3).critic1.l1.in_features == 13

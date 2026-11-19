@@ -13,9 +13,9 @@ With twin_q=False, target_noise=0, policy_delay=1 this is exactly DDPG's update:
     actor:   maximise Q(s, mu(s))  (deterministic policy gradient)
     targets: theta' <- tau*theta + (1-tau)*theta'                                       (soft update)
 
-Architecture follows the official HIRO code (`configs/base_uvf.gin`):
-    actor : obs -> 300 -> 300 -> act (tanh, scaled to action range)
-    critic: obs -> 300, concat(action) -> 300 -> 1   (action enters at the 2nd layer, as in DDPG paper)
+Architecture follows the official HIRO code (`configs/base_uvf.gin`, `agents/ddpg_networks.py`):
+    actor : obs -> 300 -> 300 -> act (tanh, scaled to action range); final layer init U(±3e-3)
+    critic: [obs, action] -> 300, concat(action) -> 300 -> 1; final layer init U(±3e-3)
     loss  : Huber (delta=1) by default, like the official code (paper writes squared error).
 """
 from __future__ import annotations
@@ -30,12 +30,28 @@ import torch.nn.functional as F
 
 
 # --------------------------------------------------------------------------- networks
+def official_init(layers, final: nn.Linear, final_scale: float) -> None:
+    """Initialisation of the official HIRO code (agents/ddpg_networks.py), which follows the DDPG paper (Sec. 7):
+    hidden weights U(±1/sqrt(fan_in)) (variance_scaling factor 1/3, uniform) and zero biases;
+    final layer weights U(±final_scale) with final_scale = 3e-3, zero bias.
+    => at initialisation the actor outputs ~the centre of the action range and Q ~ 0.
+    final_scale <= 0 keeps PyTorch's default initialisation (what we used before the fix)."""
+    if final_scale <= 0:
+        return
+    for l in layers:
+        nn.init.uniform_(l.weight, -1 / l.in_features ** 0.5, 1 / l.in_features ** 0.5)
+        nn.init.zeros_(l.bias)
+    nn.init.uniform_(final.weight, -final_scale, final_scale)
+    nn.init.zeros_(final.bias)
+
+
 class Actor(nn.Module):
-    def __init__(self, obs_dim: int, act_dim: int, act_low, act_high, hidden=(300, 300)):
+    def __init__(self, obs_dim: int, act_dim: int, act_low, act_high, hidden=(300, 300), final_init=3e-3):
         super().__init__()
         self.l1 = nn.Linear(obs_dim, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
         self.l3 = nn.Linear(hidden[1], act_dim)
+        official_init([self.l1, self.l2], self.l3, final_init)
         low = torch.as_tensor(act_low, dtype=torch.float32)
         high = torch.as_tensor(act_high, dtype=torch.float32)
         # buffers move with .to(device) and are saved in state_dict, but are not trained
@@ -49,16 +65,19 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    """Q(s, a). Action is injected after the first state layer (DDPG paper, Sec. 7)."""
+    """Q(s, a). The action is injected after the first layer (DDPG paper, Sec. 7) and, if `action_in_first`,
+    also into the first layer — as in the official HIRO code (`ddpg_networks.py`, marked "#TD3")."""
 
-    def __init__(self, obs_dim: int, act_dim: int, hidden=(300, 300)):
+    def __init__(self, obs_dim: int, act_dim: int, hidden=(300, 300), final_init=3e-3, action_in_first=True):
         super().__init__()
-        self.l1 = nn.Linear(obs_dim, hidden[0])
+        self.action_in_first = action_in_first
+        self.l1 = nn.Linear(obs_dim + (act_dim if action_in_first else 0), hidden[0])
         self.l2 = nn.Linear(hidden[0] + act_dim, hidden[1])
         self.l3 = nn.Linear(hidden[1], 1)
+        official_init([self.l1, self.l2], self.l3, final_init)
 
     def forward(self, obs: torch.Tensor, act: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.l1(obs))
+        x = F.relu(self.l1(torch.cat([obs, act], dim=-1) if self.action_in_first else obs))
         x = F.relu(self.l2(torch.cat([x, act], dim=-1)))
         return self.l3(x)
 
@@ -78,6 +97,9 @@ class TD3Config:
     policy_delay: int = 2
     # --- loss ---
     huber: bool = True             # official HIRO code uses Huber(delta=1)
+    # --- architecture details of the official code (added after the Step 6 failure, see plan.md) ---
+    final_init: float = 3e-3       # final-layer init U(±3e-3); <= 0 = PyTorch default
+    action_in_first: bool = True   # critic also sees the action in its first layer
 
     @classmethod
     def ddpg(cls, **kw) -> "TD3Config":
@@ -94,13 +116,14 @@ class TD3:
         self.act_low = np.asarray(act_low, dtype=np.float32)
         self.act_high = np.asarray(act_high, dtype=np.float32)
 
-        self.actor = Actor(obs_dim, act_dim, act_low, act_high, cfg.hidden).to(self.device)
+        self.actor = Actor(obs_dim, act_dim, act_low, act_high, cfg.hidden, cfg.final_init).to(self.device)
         self.actor_target = copy.deepcopy(self.actor)
-        self.critic1 = Critic(obs_dim, act_dim, cfg.hidden).to(self.device)
+        mk_critic = lambda: Critic(obs_dim, act_dim, cfg.hidden, cfg.final_init, cfg.action_in_first)
+        self.critic1 = mk_critic().to(self.device)
         self.critic1_target = copy.deepcopy(self.critic1)
         critic_params = list(self.critic1.parameters())
         if cfg.twin_q:
-            self.critic2 = Critic(obs_dim, act_dim, cfg.hidden).to(self.device)
+            self.critic2 = mk_critic().to(self.device)
             self.critic2_target = copy.deepcopy(self.critic2)
             critic_params += list(self.critic2.parameters())
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=cfg.actor_lr)

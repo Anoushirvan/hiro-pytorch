@@ -1,0 +1,2 @@
+[td3_fixed] TD3Config(gamma=0.99, tau=0.005, actor_lr=0.0001, critic_lr=0.001, hidden=(300, 300), twin_q=True, target_noise=0.2, noise_clip=0.5, policy_delay=2, huber=True, final_init=0.003, action_in_first=True)
+step    2000 | return  -1447.57 | success nan% | Q est   -16.11 vs true  -611.13 | 877 sps
