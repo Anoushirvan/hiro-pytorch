@@ -111,3 +111,9 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   Relabel fraction stays 50–70% all run (stored actions include exploration noise, so the original goal is rarely
   the exact argmax) — note for report. Correction costs ~40% wall-clock (115 vs 195 sps with 9 parallel runs).
   Plots: results/step4_pointmaze_success.png, results/step4_goals_corr.png.
+- 2026-11-19: Relabelling analysis (`scripts/analyze_relabel.py`, `train_hiro.py --age-analysis`).
+  Hypothesis "relabelling is driven by exploration noise" REFUTED: fresh data with training noise → 0–2% relabelled.
+  Data from a different low policy → 59–67%. Final low policy on the whole buffer, by age: oldest 20k steps 92%
+  relabelled (mean shift 4.45) → newest 17% (0.22), monotonic. ⇒ correction is doing what the paper intends
+  (compensating low-level non-stationarity); buffer (200k) never evicts in our runs, so old data dominates.
+  Figures: results/step4_relabel_vs_age.png, results/step4_relabel_analysis_seed{0,2}.png.

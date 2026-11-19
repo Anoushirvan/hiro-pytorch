@@ -18,6 +18,7 @@ import sys
 import time
 
 import numpy as np
+import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from hiro_pytorch.envs import ENV_SPECS, make_env  # noqa: E402
@@ -46,6 +47,8 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", default="results/runs")
     p.add_argument("--tag", default=None)
+    p.add_argument("--age-analysis", action="store_true",
+                   help="at the end, measure the correction's relabel rate vs. age of the buffer data")
     args = p.parse_args()
 
     set_seed(args.seed)
@@ -106,6 +109,32 @@ def main():
             print(f"step {step:7d} | train ret {row['train_return']:8.1f} | success {succ} | "
                   f"dist {row[f'dist_{spec['main_target']}']:.2f} | relabeled {row['relabel_frac_changed']:.0%} | {row['sps']:.0f} sps", flush=True)
             agent.save(os.path.join(ckpt_dir, f"seed{args.seed}.pt"))
+
+    if args.age_analysis:
+        relabel_vs_age(agent, os.path.join(run_dir, f"relabel_vs_age_seed{args.seed}.csv"))
+
+
+@torch.no_grad()
+def relabel_vs_age(agent, path, n_bins=10):
+    """Apply the correction (with the FINAL low policy) to every segment in the high buffer, grouped by
+    insertion order: bin 0 = oldest data (collected by the earliest low policies), last bin = newest."""
+    hb = agent.high_buf
+    assert hb.size < hb.capacity, "buffer wrapped; insertion order != age"
+    torch.manual_seed(0)
+    rows = []
+    for b, idx in enumerate(np.array_split(np.arange(hb.size), n_bins)):
+        batch = {k: torch.as_tensor(v[idx]) for k, v in
+                 dict(act=hb.goal, states=hb.states, actions=hb.actions).items()}
+        cands = agent.candidate_goals(batch)
+        best = agent.correction_scores(batch["states"], batch["actions"], cands).argmax(0)
+        moved = (cands[best, torch.arange(len(idx))] - batch["act"]).norm(dim=-1)
+        rows.append(dict(bin=b, first_step=int(idx[0]) * agent.cfg.c, last_step=int(idx[-1]) * agent.cfg.c,
+                         frac_changed=(best != 0).float().mean().item(), mean_moved=moved.mean().item()))
+        print(f"data from env steps {rows[-1]['first_step']:7d}-{rows[-1]['last_step']:7d}: "
+              f"relabelled {rows[-1]['frac_changed']:.0%}, mean ||g_new-g_orig|| {rows[-1]['mean_moved']:.2f}")
+    logger = CSVLogger(path)
+    for r in rows:
+        logger.log(r)
 
 
 if __name__ == "__main__":
