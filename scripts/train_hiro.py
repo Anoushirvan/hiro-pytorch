@@ -45,6 +45,7 @@ def main():
     p.add_argument("--eval-every", type=int, default=5_000)
     p.add_argument("--eval-episodes", type=int, default=5)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default="cpu", help="cpu | cuda | cuda:0 | cuda:1 | mps")
     p.add_argument("--threads", type=int, default=1,
                    help="torch threads per run; 1 is ~1.5x faster in total when running several seeds in parallel")
     p.add_argument("--out", default="results/runs")
@@ -60,7 +61,7 @@ def main():
     cfg = HIROConfig(correction=args.correction, **spec.get("hiro_kwargs", {}))
     agent = HIRO(obs_dim=env.observation_space.shape[0], state_dim=env.state_dim,
                  act_low=env.action_space.low, act_high=env.action_space.high, goal_idx=env.goal_idx,
-                 goal_low=-np.asarray(spec["goal_range"]), goal_high=np.asarray(spec["goal_range"]), cfg=cfg)
+                 goal_low=-np.asarray(spec["goal_range"]), goal_high=np.asarray(spec["goal_range"]), cfg=cfg, device=args.device)
     c = cfg.c
     start_steps = args.start_steps if args.start_steps is not None else 5 * env.max_steps
     assert env.max_steps % c == 0, "episode length must be a multiple of c"
@@ -126,7 +127,7 @@ def relabel_vs_age(agent, path, n_bins=10):
     torch.manual_seed(0)
     rows = []
     for b, idx in enumerate(np.array_split(np.arange(hb.size), n_bins)):
-        batch = {k: torch.as_tensor(v[idx]) for k, v in
+        batch = {k: torch.as_tensor(v[idx], device=agent.device) for k, v in
                  dict(act=hb.goal, states=hb.states, actions=hb.actions).items()}
         cands = agent.candidate_goals(batch)
         best = agent.correction_scores(batch["states"], batch["actions"], cands).argmax(0)

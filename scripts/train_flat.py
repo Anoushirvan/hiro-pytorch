@@ -85,6 +85,7 @@ def main():
     p.add_argument("--eval-episodes", type=int, default=5)
     p.add_argument("--probe-t", type=int, default=50)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default="cpu", help="cpu | cuda | cuda:0 | cuda:1 | mps")
     p.add_argument("--threads", type=int, default=1,
                    help="torch threads per run; 1 is ~1.5x faster in total when running several seeds in parallel")
     p.add_argument("--out", default="results/runs")
@@ -103,8 +104,8 @@ def main():
     act_dim = env.action_space.shape[0]
     low, high = env.action_space.low, env.action_space.high
     cfg = make_config(args)
-    agent = TD3(obs_dim, act_dim, low, high, cfg)
-    buf = ReplayBuffer(obs_dim, act_dim)
+    agent = TD3(obs_dim, act_dim, low, high, cfg, device=args.device)
+    buf = ReplayBuffer(obs_dim, act_dim, device=args.device)
     noise_std = args.expl_noise * (high - low) / 2
 
     tag = args.tag or args.variant

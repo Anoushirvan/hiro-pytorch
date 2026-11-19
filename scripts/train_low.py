@@ -17,6 +17,7 @@ import sys
 import time
 
 import numpy as np
+import torch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from hiro_pytorch.buffers import ReplayBuffer  # noqa: E402
@@ -59,6 +60,7 @@ def main():
     p.add_argument("--start-steps", type=int, default=1_000)
     p.add_argument("--eval-every", type=int, default=2_500)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default="cpu", help="cpu | cuda | cuda:0 | cuda:1 | mps")
     p.add_argument("--threads", type=int, default=1,
                    help="torch threads per run; 1 is ~1.5x faster in total when running several seeds in parallel")
     p.add_argument("--out", default="results/runs/PointGoalReach")
@@ -71,8 +73,8 @@ def main():
     env, eval_env = PointEnv(), PointEnv()
     zero_idx = () if args.no_zero_obs else (0, 1)
     obs_dim, goal_dim, act_dim = 4, 2, 2
-    agent = TD3(obs_dim + goal_dim, act_dim, env.action_space.low, env.action_space.high, TD3Config())
-    buf = ReplayBuffer(obs_dim + goal_dim, act_dim)
+    agent = TD3(obs_dim + goal_dim, act_dim, env.action_space.low, env.action_space.high, TD3Config(), device=args.device)
+    buf = ReplayBuffer(obs_dim + goal_dim, act_dim, device=args.device)
     tag = args.tag or ("low_no_zero_obs" if args.no_zero_obs else "low")
     logger = CSVLogger(os.path.join(args.out, tag, f"seed{args.seed}.csv"))
 
@@ -107,7 +109,6 @@ def main():
             print(f"step {step:6d} | |g| {row['goal_norm']:.2f} -> final dist {row['final_dist']:.2f}"
                   f" | within 0.5: {row['success']:.0%} | {row['sps']:.0f} sps")
 
-    import torch
     os.makedirs("results/checkpoints", exist_ok=True)
     torch.save(agent.state_dict(), f"results/checkpoints/{tag}_seed{args.seed}.pt")
 

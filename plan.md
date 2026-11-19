@@ -124,3 +124,9 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   <custom> init_qpos in ant.xml is unused by gym. Throughput (AntMaze): raw physics ~4k sps; HIRO+corr ~310 sps
   single; 6 parallel runs: 218 sps each with 1 torch thread vs 142 with default 8 → `--threads 1` default.
   Render works (results/step5_envs.png; lighting to polish in Step 7).
+- 2026-11-19: Step 6 prep. Decided to run Step 6 on the user's PC (2× GTX 1080) over ssh instead of the Mac.
+  Added `--device` (cpu/cuda:N/mps) to all training scripts and `scripts/run_step6.sh` (bench | dry | run |
+  status | stop; 13 runs: AntMaze × {hiro, hiro_no_correction, td3} × 3 seeds + AntPush/AntFall hiro × 2 seeds;
+  DEVICES round-robin). Mac hint: MPS 147 sps vs CPU 391 sps for HIRO — small nets favour CPU; benchmark on PC.
+  Note: `--age-analysis` must not be used for 2M-step runs (high buffer wraps at 200k segments).
+  Est. memory ≈ 0.5 GB per run (high buffer stores 11×30 states per segment).
