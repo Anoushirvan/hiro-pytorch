@@ -137,3 +137,6 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   viz_goals handles Ant (15-D goals → xy; chasm + movable block drawn); `scripts/make_gif.py` (subgoal + target
   spheres); `scripts/plot_step6.py` (all curves + summary.md); `scripts/make_step7_figures.sh` (one-shot pipeline,
   best seed GIFs). train_flat now logs final `dist` (not available for the current PC TD3 runs).
+- 2026-11-19: Step 8 started — `docs/report_outline.md` (sections 1–5.4 drafted, Ant results as [TODO-ANT],
+  paper Table 1 numbers: Maze 0.99±0.01, Push 0.92±0.04, Fall 0.66±0.07 at 10M) and `docs/slides_outline.md`
+  (14 slides, ~15 min, figure per slide). To be turned into .docx / .pptx after Step 6–7 results.
