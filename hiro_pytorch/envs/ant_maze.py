@@ -56,6 +56,7 @@ def build_xml(maze_id: str, scaling: float = 8.0, height: float = 0.5) -> str:
     """Insert maze geoms into ant.xml, mirroring official MazeEnv.__init__."""
     tree = ET.parse(ASSET)
     world = tree.find(".//worldbody")
+    world.find(".//geom[@name='floor']").set("size", "100 100 40")   # cosmetic: no sky visible in renders
     layout = LAYOUTS[maze_id]
     (ri, rj), = [(i, j) for i, row in enumerate(layout) for j, v in enumerate(row) if v == "r"]
     tx, ty = rj * scaling, ri * scaling
@@ -114,6 +115,9 @@ class AntMazeEnv(gym.Env):
         lo, hi = self.model.actuator_ctrlrange[:, 0], self.model.actuator_ctrlrange[:, 1]
         self.action_space = gym.spaces.Box(lo.astype(np.float32), hi.astype(np.float32), dtype=np.float32)
         self._renderer = None
+        self._style()
+        elevated = any(-1 in row for row in LAYOUTS[maze_id])
+        self.wall_top = 0.5 * scaling * (2 if elevated else 1)   # z of wall tops (for drawing markers above them)
         # wall-block centres for plotting (same convention as envs/maze.py)
         layout = LAYOUTS[maze_id]
         (ri, rj), = [(i, j) for i, row in enumerate(layout) for j, v in enumerate(row) if v == "r"]
@@ -150,15 +154,44 @@ class AntMazeEnv(gym.Env):
         return np.concatenate([self.data.qpos[:15], self.data.qvel[:14], [self.t * 0.001],
                                self.target]).astype(np.float32)
 
-    # ------------------------------------------------------------------ rendering
-    def render(self, width=480, height=480, camera=None):
-        """Top-down RGB frame (for GIFs)."""
+    # ------------------------------------------------------------------ rendering (cosmetic only)
+    def _style(self):
+        """Softer lighting and clearer colours for top-down renders. Does not affect physics."""
+        m = self.model
+        m.light_diffuse[:], m.light_ambient[:], m.light_specular[:] = 0.55, 0.25, 0.05
+        m.vis.headlight.ambient[:], m.vis.headlight.diffuse[:], m.vis.headlight.specular[:] = 0.15, 0.25, 0.0
+        for i in range(m.ngeom):
+            n = mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_GEOM, i) or ""
+            if n.startswith("block_"):
+                m.geom_rgba[i] = [0.25, 0.25, 0.3, 1]        # walls
+            elif n.startswith("elevated_"):
+                m.geom_rgba[i] = [0.75, 0.75, 0.72, 1]       # Fall platform
+            elif n == "floor":
+                m.geom_rgba[i] = [0.92, 0.93, 0.9, 1]
+            elif n.startswith("mblock_"):
+                m.geom_rgba[i] = [0.85, 0.2, 0.2, 1]         # movable block
+            else:
+                m.geom_rgba[i] = [0.85, 0.55, 0.15, 1]       # ant
+
+    def render(self, width=480, height=480, markers=()):
+        """Top-down RGB frame of the whole maze. `markers` = [(xyz, rgba, radius), ...] drawn as spheres
+        (e.g. the current subgoal and the target)."""
         if self._renderer is None:
             self._renderer = mujoco.Renderer(self.model, height, width)
             self._cam = mujoco.MjvCamera()
             self._cam.type = mujoco.mjtCamera.mjCAMERA_FREE
-            self._cam.lookat[:] = [self.blocks[:, 0].mean(), self.blocks[:, 1].mean(), 0]
-            self._cam.distance = 2.2 * (self.blocks.max() - self.blocks.min())
+            lo, hi = self.blocks.min(0) - self.scaling / 2, self.blocks.max(0) + self.scaling / 2
+            self._cam.lookat[:] = [*(lo + hi) / 2, 0]
+            half_fov = np.deg2rad(self.model.vis.global_.fovy / 2)
+            self._cam.distance = 1.05 * max(hi - lo) / 2 / np.tan(half_fov)
             self._cam.elevation, self._cam.azimuth = -90, 90
-        self._renderer.update_scene(self.data, camera=camera or self._cam)
+        self._renderer.update_scene(self.data, camera=self._cam)
+        scn = self._renderer.scene
+        for pos, rgba, radius in markers:
+            if scn.ngeom >= scn.maxgeom:
+                break
+            mujoco.mjv_initGeom(scn.geoms[scn.ngeom], mujoco.mjtGeom.mjGEOM_SPHERE, [radius, 0, 0],
+                                np.asarray(pos, dtype=np.float64), np.eye(3).flatten(),
+                                np.asarray(rgba, dtype=np.float32))
+            scn.ngeom += 1
         return self._renderer.render()

@@ -130,3 +130,10 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   DEVICES round-robin). Mac hint: MPS 147 sps vs CPU 391 sps for HIRO — small nets favour CPU; benchmark on PC.
   Note: `--age-analysis` must not be used for 2M-step runs (high buffer wraps at 200k segments).
   Est. memory ≈ 0.5 GB per run (high buffer stores 11×30 states per segment).
+- 2026-11-19: Step 6 RUNNING on PC (user launched 13 runs, 2M steps, DEVICES="cuda:0 cuda:1"; ~62–68 sps HIRO,
+  ~77 sps TD3 → ETA ≈ 8 h). PC benchmark (HIRO+corr AntMaze): CPU 99 sps ×1 / 328 total ×8; GPU 250 ×1 / 720 total ×8.
+  Fixed: train_flat/train_low prints now flush (were invisible under nohup).
+- 2026-11-19: Step 7 prep (Mac only). Ant renders restyled (lighting/colours, floor 100, marker spheres above walls);
+  viz_goals handles Ant (15-D goals → xy; chasm + movable block drawn); `scripts/make_gif.py` (subgoal + target
+  spheres); `scripts/plot_step6.py` (all curves + summary.md); `scripts/make_step7_figures.sh` (one-shot pipeline,
+  best seed GIFs). train_flat now logs final `dist` (not available for the current PC TD3 runs).

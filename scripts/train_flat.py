@@ -42,7 +42,7 @@ def make_config(args) -> TD3Config:
 
 
 def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: int, reset_options=None):
-    returns, q_est, q_true, success = [], [], [], []
+    returns, q_est, q_true, success, dist = [], [], [], [], []
     for ep in range(episodes):
         obs, _ = env.reset(seed=seed + ep, options=reset_options)
         obs_list, act_list, rews = [], [], []
@@ -56,6 +56,7 @@ def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: i
             done = term or trunc
         returns.append(sum(rews))
         success.append(float(info.get("success", np.nan)))
+        dist.append(float(info.get("dist", np.nan)))
         # discounted return-to-go G_t = r_t + gamma * G_{t+1}
         g, gs = 0.0, np.zeros(len(rews))
         for t in reversed(range(len(rews))):
@@ -66,7 +67,7 @@ def evaluate(env, agent: TD3, episodes: int, gamma: float, probe_t: int, seed: i
         a = torch.as_tensor(np.array(act_list[:n]), dtype=torch.float32, device=agent.device)
         q_est.append(agent.q_value(o, a).mean().item())
         q_true.append(gs[:n].mean())
-    return float(np.mean(returns)), float(np.mean(q_est)), float(np.mean(q_true)), float(np.mean(success))
+    return float(np.mean(returns)), float(np.mean(q_est)), float(np.mean(q_true)), float(np.mean(success)), float(np.mean(dist))
 
 
 def main():
@@ -131,9 +132,9 @@ def main():
             info = agent.update(buf.sample(args.batch))
 
         if step % args.eval_every == 0:
-            ret, q_est, q_true, succ = evaluate(eval_env, agent, args.eval_episodes, cfg.gamma,
+            ret, q_est, q_true, succ, dist = evaluate(eval_env, agent, args.eval_episodes, cfg.gamma,
                                                 args.probe_t, seed=10_000, reset_options=eval_opts)
-            logger.log(dict(step=step, eval_return=ret, q_est=q_est, q_true=q_true, success=succ,
+            logger.log(dict(step=step, eval_return=ret, q_est=q_est, q_true=q_true, success=succ, dist=dist,
                             critic_loss=info["critic_loss"], sps=step / (time.time() - t0)))
             print(f"step {step:7d} | return {ret:9.2f} | success {succ:.0%} | Q est {q_est:8.2f} vs true {q_true:8.2f}"
                   f" | {step / (time.time() - t0):.0f} sps", flush=True)

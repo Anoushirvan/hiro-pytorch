@@ -23,6 +23,18 @@ def draw_maze(ax, env):
     s = env.scaling
     for cx, cy in env.blocks:
         ax.add_patch(Rectangle((cx - s / 2, cy - s / 2), s, s, color="#555", zorder=1))
+    if hasattr(env, "maze_id"):          # Ant envs: also draw chasms and the movable block's start cell
+        from hiro_pytorch.envs.ant_maze import LAYOUTS
+        lay = LAYOUTS[env.maze_id]
+        (ri, rj), = [(i, j) for i, row in enumerate(lay) for j, v in enumerate(row) if v == "r"]
+        for i, row in enumerate(lay):
+            for j, v in enumerate(row):
+                x, y = (j - rj) * s, (i - ri) * s
+                if v == -1:
+                    ax.add_patch(Rectangle((x - s / 2, y - s / 2), s, s, color="#bcd4ee", zorder=1))
+                elif v in ("XY", "YZ"):
+                    ax.add_patch(Rectangle((x - s / 2, y - s / 2), s, s, fill=False, hatch="//",
+                                           ec="#d03030", lw=1.2, zorder=2))
     ax.set_aspect("equal")
     ax.set_xlim(env.blocks[:, 0].min() - s / 2, env.blocks[:, 0].max() + s / 2)
     ax.set_ylim(env.blocks[:, 1].min() - s / 2, env.blocks[:, 1].max() + s / 2)
@@ -30,14 +42,15 @@ def draw_maze(ax, env):
 
 def draw_episode(ax, env, tr, target, title):
     draw_maze(ax, env)
-    p = tr["positions"]
+    p = tr["positions"][:, :2]          # goals may be 15-D (ant): plot the x, y part
     ax.plot(p[:, 0], p[:, 1], "-", color="#2a6fdb", lw=1.5, zorder=3, label="agent path")
     for k, (_, start, goal_abs) in enumerate(tr["subgoals"]):
+        start, goal_abs = start[:2], goal_abs[:2]
         ax.annotate("", xy=goal_abs, xytext=start, zorder=4,
                     arrowprops=dict(arrowstyle="->", color="#e0703a", lw=1, alpha=0.8))
         ax.plot(*goal_abs, "o", ms=3, color="#e0703a", zorder=4, label="subgoal $s_t+g_t$" if k == 0 else None)
     ax.plot(*p[0], "s", color="k", ms=6, zorder=5, label="start")
-    ax.plot(*target, "*", color="#2e9e5b", ms=14, zorder=5, label="target")
+    ax.plot(*target[:2], "*", color="#2e9e5b", ms=14, zorder=5, label="target")
     ok = "success" if tr["info"]["success"] else "fail"
     ax.set_title(f"{title}\nfinal dist {tr['info']['dist']:.2f} ({ok})", fontsize=9)
 
