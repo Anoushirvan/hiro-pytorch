@@ -107,7 +107,7 @@ def main():
                        success=(st[:, 1] < 0.5).mean(), sps=step / (time.time() - t0))
             logger.log(row)
             print(f"step {step:6d} | |g| {row['goal_norm']:.2f} -> final dist {row['final_dist']:.2f}"
-                  f" | within 0.5: {row['success']:.0%} | {row['sps']:.0f} sps")
+                  f" | within 0.5: {row['success']:.0%} | {row['sps']:.0f} sps", flush=True)
 
     os.makedirs("results/checkpoints", exist_ok=True)
     torch.save(agent.state_dict(), f"results/checkpoints/{tag}_seed{args.seed}.pt")

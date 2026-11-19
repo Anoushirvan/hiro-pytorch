@@ -136,7 +136,7 @@ def main():
             logger.log(dict(step=step, eval_return=ret, q_est=q_est, q_true=q_true, success=succ,
                             critic_loss=info["critic_loss"], sps=step / (time.time() - t0)))
             print(f"step {step:7d} | return {ret:9.2f} | success {succ:.0%} | Q est {q_est:8.2f} vs true {q_true:8.2f}"
-                  f" | {step / (time.time() - t0):.0f} sps")
+                  f" | {step / (time.time() - t0):.0f} sps", flush=True)
 
 
 if __name__ == "__main__":
