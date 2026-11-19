@@ -155,3 +155,6 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   uses PyTorch default init + random warm-up and only shows AntMaze success after ~4.5M steps (plot read approx.)
   → our 2M budget likely too short. **Decision (user): stop coding/experiments; write report + slides,
   accept the paper's Ant claims; our own evidence = Steps 1–4 (Pendulum, low level, PointMaze, relabel analysis).**
+- 2026-11-20: Word report written: `docs/report.docx` (13 pages A4, 9 figures, 4 tables, TOC; built by
+  `docs/build_report.js`, diagrams by `scripts/make_diagrams.py`). Title page has placeholders [Name] etc.
+  Ant section = paper's Table 1 + honest "Our Ant runs" paragraph (user's choice). Rendered via Word → PDF and checked.
