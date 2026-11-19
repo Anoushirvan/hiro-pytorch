@@ -36,5 +36,14 @@ ENV_SPECS.update({
 })
 
 
+def _ant_run():
+    from .ant_maze import AntRunEnv
+    return AntRunEnv()
+
+
+ENV_SPECS["AntRun"] = dict(make=_ant_run, goal_range=ANT_GOAL_RANGE, hiro_kwargs=ANT_HIRO,
+                           eval_targets={"0_0": (0.0, 0.0)}, main_target="0_0")   # diagnostics only
+
+
 def make_env(name: str):
     return ENV_SPECS[name]["make"]()

@@ -150,3 +150,8 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
   Fix: TD3Config.final_init=3e-3, action_in_first=True (defaults), policy warm-up; `--legacy` reproduces the old
   setup. 27 tests pass. Validation on the Mac running (AntMaze fixed ×2 + legacy ×1 at 300k, PointMaze ×2, Pendulum).
   Batch-1 results kept in results/runs/Ant* for the report ("what went wrong").
+- 2026-11-20: Diagnostics stopped by user. Partial: fixes make PointMaze ~2× faster (100% at (0,8) by ~45k);
+  AntMaze at 100k still stuck (goals saturated, no walking). Public PyTorch reimplementation (watakandai/hiro_pytorch)
+  uses PyTorch default init + random warm-up and only shows AntMaze success after ~4.5M steps (plot read approx.)
+  → our 2M budget likely too short. **Decision (user): stop coding/experiments; write report + slides,
+  accept the paper's Ant claims; our own evidence = Steps 1–4 (Pendulum, low level, PointMaze, relabel analysis).**

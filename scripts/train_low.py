@@ -27,31 +27,53 @@ from hiro_pytorch.td3 import TD3, TD3Config  # noqa: E402
 from hiro_pytorch.utils import CSVLogger, set_seed  # noqa: E402
 
 
-def run_segments(env, agent, c, R, zero_idx, n_episodes, rng, noise_std=0.0, buf=None):
-    """Roll out episodes made of c-step goal segments. Returns list of (||g||, final distance)."""
+def make_goal_sampler(env_name, R, rest):
+    """Point: g ~ U(-R, R)^2.  Ant (15-D goal = qpos[:15]): x,y ~ U(-R, R); the other 13 dims (z, orientation,
+    joints) are 0 ("keep posture", rest='zero') or uniform over the official goal range (rest='full')."""
+    if env_name == "point":
+        return lambda rng: rng.uniform(-R, R, size=2).astype(np.float32)
+    from hiro_pytorch.envs import ANT_GOAL_RANGE
+    hi = np.asarray(ANT_GOAL_RANGE, dtype=np.float32)
+
+    def sample(rng):
+        g = np.zeros(15, np.float32) if rest == "zero" else rng.uniform(-hi, hi).astype(np.float32)
+        g[:2] = rng.uniform(-R, R, size=2)
+        return g
+    return sample
+
+
+def run_segments(env, agent, c, sample_goal, zero_idx, n_episodes, rng, noise_std=0.0, buf=None):
+    """Roll out episodes made of c-step goal segments.
+    Returns list of (||g_xy||, final x,y distance to the absolute target, final distance in all goal dims)."""
     gi = env.goal_idx
+    sd = getattr(env, "state_dim", None)
     stats = []
     for _ in range(n_episodes):
-        s, _ = env.reset()
+        o, _ = env.reset()
+        s = o[:sd] if sd else o
         done, t = False, 0
         while not done:
             if t % c == 0:                                   # new goal every c steps
-                g = rng.uniform(-R, R, size=len(gi)).astype(np.float32)
-                target, g_norm = s[gi] + g, np.linalg.norm(g)
+                g = sample_goal(rng)
+                target, g_norm = s[gi] + g, np.linalg.norm(g[:2])
             a = agent.act(low_level_input(s, g, zero_idx), noise_std)
-            s2, _, term, trunc, _ = env.step(a)
+            o2, _, term, trunc, _ = env.step(a)
+            s2 = o2[:sd] if sd else o2
             r = intrinsic_reward(s, g, s2, gi)               # Eq. 3
             g2 = goal_transition(s, g, s2, gi)               # Eq. 2
             if buf is not None:                              # Eq. 4 transition
                 buf.add(low_level_input(s, g, zero_idx), a, r, low_level_input(s2, g2, zero_idx), term)
             s, g, t, done = s2, g2, t + 1, term or trunc
             if t % c == 0:
-                stats.append((g_norm, np.linalg.norm(s[gi] - target)))
+                stats.append((g_norm, np.linalg.norm(s[gi][:2] - target[:2]), np.linalg.norm(s[gi] - target)))
     return stats
 
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument("--env", choices=["point", "AntRun"], default="point")
+    p.add_argument("--goal-rest", choices=["zero", "full"], default="zero",
+                   help="Ant only: non-xy goal dims = 0 (keep posture) or uniform over the official range")
     p.add_argument("--steps", type=int, default=50_000)
     p.add_argument("--c", type=int, default=10)
     p.add_argument("--goal-range", type=float, default=5.0)
@@ -70,44 +92,59 @@ def main():
 
     set_seed(args.seed)
     rng, eval_rng = np.random.default_rng(args.seed), np.random.default_rng(12345)
-    env, eval_env = PointEnv(), PointEnv()
+    if args.env == "point":
+        env, eval_env = PointEnv(), PointEnv()
+    else:
+        from hiro_pytorch.envs import make_env
+        env, eval_env = make_env(args.env), make_env(args.env)
+    sd = getattr(env, "state_dim", None)
     zero_idx = () if args.no_zero_obs else (0, 1)
-    obs_dim, goal_dim, act_dim = 4, 2, 2
+    obs_dim = sd or env.observation_space.shape[0]
+    goal_dim, act_dim = len(env.goal_idx), env.action_space.shape[0]
+    half = (env.action_space.high - env.action_space.low) / 2
+    sample_goal = make_goal_sampler(args.env, args.goal_range, args.goal_rest)
     agent = TD3(obs_dim + goal_dim, act_dim, env.action_space.low, env.action_space.high, TD3Config(), device=args.device)
     buf = ReplayBuffer(obs_dim + goal_dim, act_dim, device=args.device)
     tag = args.tag or ("low_no_zero_obs" if args.no_zero_obs else "low")
     logger = CSVLogger(os.path.join(args.out, tag, f"seed{args.seed}.csv"))
 
     # Collect with one segment-episode at a time so that updates interleave with env steps.
-    class _Random:  # uniform-random warm-up policy
+    class _Random:  # uniform-random warm-up policy (point); the Ant warms up with the noisy policy (official)
         def act(self, _x, _n=0.0):
-            return rng.uniform(-1, 1, size=act_dim).astype(np.float32)
+            return rng.uniform(-half, half).astype(np.float32)
 
     t0, step = time.time(), 0
-    s, _ = env.reset(seed=args.seed)
+    o, _ = env.reset(seed=args.seed)
+    s = o[:sd] if sd else o
     gi, t_ep = env.goal_idx, 0
+    noise = args.expl_noise * half
     while step < args.steps:
         if t_ep % args.c == 0:
-            g = rng.uniform(-args.goal_range, args.goal_range, size=goal_dim).astype(np.float32)
-        pol = _Random() if step < args.start_steps else agent
-        a = pol.act(low_level_input(s, g, zero_idx), args.expl_noise)
-        s2, _, term, trunc, _ = env.step(a)
+            g = sample_goal(rng)
+        pol = _Random() if (step < args.start_steps and args.env == "point") else agent
+        a = pol.act(low_level_input(s, g, zero_idx), noise)
+        o2, _, term, trunc, _ = env.step(a)
+        s2 = o2[:sd] if sd else o2
         r = intrinsic_reward(s, g, s2, gi)
         g2 = goal_transition(s, g, s2, gi)
         buf.add(low_level_input(s, g, zero_idx), a, r, low_level_input(s2, g2, zero_idx), term)
         s, g, t_ep, step = s2, g2, t_ep + 1, step + 1
         if term or trunc:
-            s, _ = env.reset()
+            o, _ = env.reset()
+            s = o[:sd] if sd else o
             t_ep = 0
         if step >= args.start_steps:
             agent.update(buf.sample(100))
         if step % args.eval_every == 0:
-            st = np.array(run_segments(eval_env, agent, args.c, args.goal_range, zero_idx, 5, eval_rng))
+            n_ep = 5 if args.env == "point" else 2
+            st = np.array(run_segments(eval_env, agent, args.c, sample_goal, zero_idx, n_ep, eval_rng))
             row = dict(step=step, goal_norm=st[:, 0].mean(), final_dist=st[:, 1].mean(),
-                       success=(st[:, 1] < 0.5).mean(), sps=step / (time.time() - t0))
+                       final_dist_all=st[:, 2].mean(), success=(st[:, 1] < 0.5).mean(),
+                       sps=step / (time.time() - t0))
             logger.log(row)
-            print(f"step {step:6d} | |g| {row['goal_norm']:.2f} -> final dist {row['final_dist']:.2f}"
-                  f" | within 0.5: {row['success']:.0%} | {row['sps']:.0f} sps", flush=True)
+            print(f"step {step:6d} | |g_xy| {row['goal_norm']:.2f} -> final xy dist {row['final_dist']:.2f}"
+                  f" (all dims {row['final_dist_all']:.2f}) | within 0.5: {row['success']:.0%} | {row['sps']:.0f} sps",
+                  flush=True)
 
     os.makedirs("results/checkpoints", exist_ok=True)
     torch.save(agent.state_dict(), f"results/checkpoints/{tag}_seed{args.seed}.pt")

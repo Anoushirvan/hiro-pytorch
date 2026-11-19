@@ -1,0 +1,4 @@
+[td3_noise3] TD3Config(gamma=0.99, tau=0.005, actor_lr=0.0001, critic_lr=0.001, hidden=(300, 300), twin_q=True, target_noise=0.2, noise_clip=0.5, policy_delay=2, huber=True, final_init=0.003, action_in_first=True)
+step   25000 | return      0.40 | success 100% | Q est     1.01 vs true     0.02 | 390 sps
+step   50000 | return     -0.05 | success 100% | Q est     0.85 vs true     0.02 | 376 sps
+step   75000 | return     10.46 | success 100% | Q est     3.53 vs true     2.98 | 371 sps

@@ -1,0 +1,4 @@
+step   50000 | train ret  -6188.0 | success 16_0=0% 16_16=0% 0_16=0% | dist 16.01 | relabeled 95% | 187 sps
+step  100000 | train ret  -5848.7 | success 16_0=0% 16_16=0% 0_16=0% | dist 15.89 | relabeled 69% | 184 sps
+step  150000 | train ret  -7037.0 | success 16_0=0% 16_16=0% 0_16=0% | dist 16.16 | relabeled 47% | 183 sps
+step  200000 | train ret  -7028.5 | success 16_0=0% 16_16=0% 0_16=0% | dist 15.90 | relabeled 66% | 189 sps

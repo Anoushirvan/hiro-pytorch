@@ -1,2 +1,16 @@
 [td3_fixed] TD3Config(gamma=0.99, tau=0.005, actor_lr=0.0001, critic_lr=0.001, hidden=(300, 300), twin_q=True, target_noise=0.2, noise_clip=0.5, policy_delay=2, huber=True, final_init=0.003, action_in_first=True)
 step    2000 | return  -1447.57 | success nan% | Q est   -16.11 vs true  -611.13 | 877 sps
+step    4000 | return  -1013.97 | success nan% | Q est   -33.32 vs true  -421.70 | 554 sps
+step    6000 | return   -134.80 | success nan% | Q est   -27.24 vs true   -46.29 | 494 sps
+step    8000 | return   -100.07 | success nan% | Q est   -22.91 vs true   -23.91 | 474 sps
+step   10000 | return   -129.43 | success nan% | Q est   -32.73 vs true   -44.97 | 463 sps
+step   12000 | return    -99.26 | success nan% | Q est   -23.16 vs true   -22.80 | 456 sps
+step   14000 | return    -99.26 | success nan% | Q est   -22.85 vs true   -22.47 | 450 sps
+step   16000 | return    -97.97 | success nan% | Q est   -22.72 vs true   -21.48 | 446 sps
+step   18000 | return    -97.58 | success nan% | Q est   -23.04 vs true   -21.09 | 443 sps
+step   20000 | return    -97.54 | success nan% | Q est   -22.70 vs true   -20.77 | 440 sps
+step   22000 | return    -97.96 | success nan% | Q est   -23.28 vs true   -20.99 | 438 sps
+step   24000 | return    -98.79 | success nan% | Q est   -23.52 vs true   -21.03 | 433 sps
+step   26000 | return    -97.91 | success nan% | Q est   -23.58 vs true   -20.76 | 432 sps
+step   28000 | return    -98.70 | success nan% | Q est   -23.95 vs true   -21.03 | 431 sps
+step   30000 | return   -100.28 | success nan% | Q est   -23.70 vs true   -21.32 | 429 sps

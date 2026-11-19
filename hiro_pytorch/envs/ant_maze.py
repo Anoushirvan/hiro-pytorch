@@ -45,10 +45,13 @@ LAYOUTS = {   # copied from official maze_env_utils.construct_maze (1 = wall, -1
              [1, 1, 1, 1]],
 }
 
+LAYOUTS["Open"] = [["r"]]   # diagnostics only: no walls, just the floor
+
 TASKS = {   # target sampling for training, the main evaluation target, which coords the reward uses
     "Maze": dict(train_low=(-4, -4), train_high=(20, 20), eval_target=(0, 16), dims=2),
     "Push": dict(train_low=None, train_high=None, eval_target=(0, 19), dims=2),       # fixed target
     "Fall": dict(train_low=None, train_high=None, eval_target=(0, 27, 4.5), dims=3),  # fixed target
+    "Open": dict(train_low=None, train_high=None, eval_target=(0, 0), dims=2),        # diagnostics
 }
 
 
@@ -122,7 +125,7 @@ class AntMazeEnv(gym.Env):
         layout = LAYOUTS[maze_id]
         (ri, rj), = [(i, j) for i, row in enumerate(layout) for j, v in enumerate(row) if v == "r"]
         self.blocks = np.array([[(j - rj) * scaling, (i - ri) * scaling] for i, row in enumerate(layout)
-                                for j, v in enumerate(row) if v == 1], dtype=np.float64)
+                                for j, v in enumerate(row) if v == 1], dtype=np.float64).reshape(-1, 2)
 
     # ------------------------------------------------------------------ gym API
     def reset(self, seed=None, options=None):
@@ -195,3 +198,18 @@ class AntMazeEnv(gym.Env):
                                 np.asarray(rgba, dtype=np.float32))
             scn.ngeom += 1
         return self._renderer.render()
+
+
+class AntRunEnv(AntMazeEnv):
+    """Diagnostic task (not in the paper): open floor, reward = forward velocity dx/dt (the locomotion part of
+    gym's Ant reward, without control cost). Tests whether our Ant port can learn to walk at all."""
+
+    def __init__(self, max_steps: int = 500):
+        super().__init__("Open", max_steps=max_steps)
+
+    def step(self, action):
+        x0 = self.data.qpos[0]
+        obs, _, term, trunc, info = super().step(action)
+        dt = self.model.opt.timestep * self.frame_skip
+        info["x"] = float(self.data.qpos[0])
+        return obs, float((self.data.qpos[0] - x0) / dt), term, trunc, info
