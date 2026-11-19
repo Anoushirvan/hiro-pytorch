@@ -77,9 +77,9 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - [x] Step 3 — PointMaze + HIRO without correction
 - [x] Step 4 — off-policy correction (Eq. 5)
 - [x] Step 5 — Ant + Ant Maze port
-- [ ] Step 6 — experiments (Maze: HIRO / no-corr / flat TD3; Push; Fall)
-- [ ] Step 7 — plots, goal-trajectory visualisations, GIFs
-- [ ] Step 8 — README, Word report, PowerPoint, private GitHub repo
+- [x] Step 6 (failed on Ant, see log) — experiments (Maze: HIRO / no-corr / flat TD3; Push; Fall)
+- [x] Step 7 — plots, goal-trajectory visualisations, GIFs
+- [x] Step 8 — README, Word report, PowerPoint, private GitHub repo
 
 ## Log / decisions
 - 2026-11-15: plan approved. Claude writes each module, user reviews at each checkpoint.
@@ -161,3 +161,6 @@ scaled to goal range; high-level reward scale 0.1; low trains every step, high e
 - 2026-11-20: Slides written: `docs/slides.pptx` (14 slides incl. 1 backup, 16:9, speaker notes on every slide,
   native chart of the paper's Table 1, animated PointMaze GIF on slide 10; built by `docs/build_slides.js`,
   GIF by `scripts/make_point_gif.py`). Rendered via PowerPoint → PDF and checked. Placeholders [Name]/[Course]/[Date].
+- 2026-11-20: Step 8 done — published https://github.com/Anoushirvan/hiro-pytorch (PUBLIC, user's choice; MIT license,
+  README). Before the first push: commit emails rewritten to the GitHub noreply address, PC address scrubbed from
+  history, Office lock files ignored. Remaining: title-page/slide placeholders ([Name], [Course], …).
